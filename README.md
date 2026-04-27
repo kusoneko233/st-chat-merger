@@ -23,9 +23,9 @@ https://github.com/kusoneko233/st-chat-merger
 SillyTavern/public/scripts/extensions/third-party/st-chat-merger/
 3. 确保目录结构如下：
 st-chat-merger/
-   index.js
-   merger.html
-   manifest.json
+   index.js，
+   merger.html，
+   manifest.json，
    style.css
 4. 重启 SillyTavern
 
