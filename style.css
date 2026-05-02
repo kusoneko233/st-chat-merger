@@ -828,3 +828,37 @@
     background: rgba(124, 111, 224, 0.4);
     border-radius: 3px;
 }
+
+/* ===== 全屏预览导航栏 ===== */
+.full-preview-nav {
+    display: flex;
+    gap: 6px;
+    padding: 8px 20px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    background: rgba(0, 0, 0, 0.3);
+    flex-wrap: wrap;
+    flex-shrink: 0;
+}
+
+.full-preview-nav:empty {
+    display: none;
+}
+
+.nav-jump-btn {
+    padding: 4px 12px;
+    border: 1px solid rgba(124, 111, 224, 0.4);
+    border-radius: 4px;
+    background: rgba(124, 111, 224, 0.1);
+    color: #a899f0;
+    font-size: 0.82em;
+    cursor: pointer;
+    transition: all 0.15s;
+    white-space: nowrap;
+}
+
+.nav-jump-btn:hover {
+    background: rgba(124, 111, 224, 0.25);
+    border-color: #7c6fe0;
+    color: #ccc;
+}
+
