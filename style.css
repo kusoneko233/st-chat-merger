@@ -858,3 +858,113 @@
     color: #ccc;
 }
 
+
+/* ===== 消息分块高亮 ===== */
+.pm-blocks {
+    margin-top: 4px;
+}
+
+.pm-block {
+    margin-bottom: 4px;
+    border-radius: 4px;
+    overflow: hidden;
+}
+
+/* 正文块 - 高亮 */
+.pm-block-prose {
+    background: rgba(124, 111, 224, 0.08);
+    border: 1px solid rgba(124, 111, 224, 0.25);
+    border-left: 3px solid #7c6fe0;
+    padding: 8px 10px;
+}
+
+.pm-block-prose .pm-block-text {
+    color: #ddd;
+    white-space: pre-wrap;
+    word-break: break-word;
+    line-height: 1.7;
+    font-family: inherit;
+    font-size: 0.95em;
+}
+
+/* 折叠块 - 淡化 */
+.pm-block-folded {
+    background: rgba(255, 255, 255, 0.02);
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    border-left: 2px solid #555;
+    padding: 0;
+}
+
+.pm-block-folded .fold-body {
+    color: #888;
+    white-space: pre-wrap;
+    word-break: break-word;
+    line-height: 1.5;
+    font-size: 0.85em;
+    padding: 6px 10px;
+    border-top: 1px solid rgba(255, 255, 255, 0.05);
+    max-height: 400px;
+    overflow-y: auto;
+}
+
+/* 块标签 */
+.pm-block-label {
+    font-size: 0.78em;
+    padding: 4px 10px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.prose-label {
+    color: #a899f0;
+    font-weight: bold;
+}
+
+.fold-label {
+    color: #777;
+    transition: color 0.15s;
+}
+
+.fold-label:hover {
+    color: #aaa;
+}
+
+.fold-arrow {
+    font-size: 0.7em;
+    display: inline-block;
+    transition: transform 0.15s;
+    width: 10px;
+}
+
+.fold-size {
+    color: #555;
+    font-size: 0.9em;
+    margin-left: auto;
+}
+
+/* 用户消息更醒目 */
+.preview-msg.user {
+    border-left-color: #4a9eff;
+    border-left-width: 4px;
+    background: rgba(74, 158, 255, 0.08);
+}
+
+.preview-msg.user .pm-sender {
+    color: #4a9eff;
+}
+
+/* 全屏预览中正文块更宽敞 */
+#merger-full-preview-content .pm-block-prose {
+    padding: 12px 16px;
+    margin-bottom: 6px;
+}
+
+#merger-full-preview-content .pm-block-prose .pm-block-text {
+    font-size: 1em;
+    line-height: 1.8;
+}
+
+#merger-full-preview-content .pm-block-folded .fold-body {
+    max-height: 600px;
+}
