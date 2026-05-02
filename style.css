@@ -620,12 +620,8 @@
     padding: 8px 14px;
     font-size: 0.9em;
     margin: 14px 0 8px 0;
-    position: sticky;
-    top: 0;
-    z-index: 1;
-    background: rgba(124, 111, 224, 0.2);
-    backdrop-filter: blur(8px);
 }
+
 
 #merger-full-preview-content .preview-omission {
     padding: 12px 0;
