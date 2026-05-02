@@ -375,7 +375,6 @@ async function getEntries() {
         return externalFiles.map(f => ({ fileName: f.name, messages: [...f.messages], chat: null }));
     }
 }
-
 async function performMerge() {
     const orderMode = document.getElementById('merger-order')?.value || 'list-order';
     const dedup = document.getElementById('merger-dedup')?.checked || false;
@@ -496,7 +495,6 @@ function closeResult() {
 
 // ===== 预览（三段式） =====
 
-// 构建预览要显示的区间列表
 function buildPreviewSections(messages, boundaries) {
     const EDGE = 3;
     const SEAM = 2;
@@ -580,6 +578,137 @@ function collectPreviewIndices(messages, sectionData) {
     return indices;
 }
 
+// ===== 消息分块解析（正文高亮） =====
+
+function parseMessageBlocks(text) {
+    const blocks = [];
+    const htmlInlineTags = new Set(['b', 'i', 'em', 'strong', 'u', 's', 'p', 'br', 'hr', 'a', 'span', 'div', 'details', 'summary', 'blockquote', 'code', 'pre']);
+
+    const xmlRegex = /<([a-zA-Z_][\w_-]*)(?:\s[^>]*)?>[\s\S]*?<\/\1>/g;
+    let segments = [];
+    let lastEnd = 0;
+    let match;
+
+    while ((match = xmlRegex.exec(text)) !== null) {
+        const tagName = match[1].toLowerCase();
+        if (htmlInlineTags.has(tagName)) continue;
+
+        if (match.index > lastEnd) {
+            const before = text.substring(lastEnd, match.index).trim();
+            if (before) {
+                segments.push({ type: 'text', content: before });
+            }
+        }
+        segments.push({ type: 'xml', tag: match[1], content: match[0] });
+        lastEnd = match.index + match[0].length;
+    }
+
+    if (lastEnd < text.length) {
+        const rest = text.substring(lastEnd).trim();
+        if (rest) {
+            segments.push({ type: 'text', content: rest });
+        }
+    }
+
+    if (segments.length === 0 && text.trim()) {
+        segments.push({ type: 'text', content: text.trim() });
+    }
+
+    for (const seg of segments) {
+        if (seg.type !== 'text') {
+            blocks.push(seg);
+            continue;
+        }
+
+        const lines = seg.content.split('\n');
+        let currentBlock = null;
+
+        for (const line of lines) {
+            const trimmed = line.trim();
+            if (!trimmed) {
+                if (currentBlock) {
+                    blocks.push(currentBlock);
+                    currentBlock = null;
+                }
+                continue;
+            }
+
+            const isTableLine = /^\|.*\|$/.test(trimmed) || /^\|[-:| ]+\|$/.test(trimmed);
+            const isStatusLine = /^[🪪🎭💪⚡🤕🌬️⚔️💰🏘️🎯⭕👕💼🌀┣┗💞🤝🔗🕒📍⭐🎒🛡️❤️🧠📊🔮💎🏆📋✨🔥💫⚠️🌟📌🔰]/.test(trimmed) ||
+                                 /^[\*]{3}\[/.test(trimmed) ||
+                                 /^━━/.test(trimmed) ||
+                                 /^\[.*\]:/.test(trimmed);
+
+            if (isTableLine) {
+                if (currentBlock && currentBlock.type === 'table') {
+                    currentBlock.content += '\n' + line;
+                } else {
+                    if (currentBlock) blocks.push(currentBlock);
+                    currentBlock = { type: 'table', content: line };
+                }
+            } else if (isStatusLine) {
+                if (currentBlock && currentBlock.type === 'status') {
+                    currentBlock.content += '\n' + line;
+                } else {
+                    if (currentBlock) blocks.push(currentBlock);
+                    currentBlock = { type: 'status', content: line };
+                }
+            } else {
+                if (currentBlock && currentBlock.type === 'prose') {
+                    currentBlock.content += '\n' + line;
+                } else {
+                    if (currentBlock) blocks.push(currentBlock);
+                    currentBlock = { type: 'prose', content: line };
+                }
+            }
+        }
+        if (currentBlock) blocks.push(currentBlock);
+    }
+
+    return blocks;
+}
+
+function getBlockLabel(block) {
+    if (block.type === 'xml') {
+        const tagMap = {
+            'story_driver': '🧠 思维链/导演指令',
+            'story_scene': '📖 正文',
+            'combat_driver': '⚔️ 战斗驱动',
+            'wlog': '📋 世界日志',
+            'status': '📊 状态面板',
+            'affinity': '💞 好感度',
+            'npc_log': '💭 NPC内心',
+            'acg_think': '🏷️ 角色标签',
+            'thinking': '🧠 思维链',
+            'think': '🧠 思维链',
+            'thought': '🧠 思维链',
+            'inner_thought': '💭 内心独白',
+            'ooc': '📝 OOC',
+            'system': '⚙️ 系统',
+            'narration': '📖 旁白',
+            'scene': '📖 场景',
+            'combat': '⚔️ 战斗',
+            'battle': '⚔️ 战斗',
+        };
+        const lower = block.tag.toLowerCase();
+        return tagMap[lower] || ('📦 ' + block.tag);
+    }
+    if (block.type === 'table') return '📊 表格数据';
+    if (block.type === 'status') return '📊 状态信息';
+    return '📖 正文';
+}
+
+function isProseBlock(block) {
+    if (block.type === 'prose') return true;
+    if (block.type === 'xml') {
+        const proseTags = new Set(['story_scene', 'narration', 'scene', 'narrative', 'content', 'story', 'main']);
+        return proseTags.has(block.tag.toLowerCase());
+    }
+    return false;
+}
+
+// ===== 预览消息渲染 =====
+
 function renderPreviewMsg(m, index, container, truncate) {
     if (m.extra?.chat_merger_separator) {
         const s = document.createElement('div');
@@ -588,46 +717,143 @@ function renderPreviewMsg(m, index, container, truncate) {
         container.appendChild(s);
         return;
     }
+
     const d = document.createElement('div');
     d.className = `preview-msg ${m.is_system ? 'system' : m.is_user ? 'user' : 'char'}`;
 
     const content = m.mes || '';
-    let displayContent;
-    let needExpand = false;
-    if (truncate && content.length > 150) {
-        displayContent = content.substring(0, 150);
-        needExpand = true;
-    } else {
-        displayContent = content;
+
+    // 头部
+    const header = document.createElement('div');
+    header.className = 'pm-header';
+    header.innerHTML = `<span class="pm-index">#${index + 1}</span>
+        <span class="pm-sender">${escapeHtml(m.name || (m.is_user ? 'User' : 'Char'))}</span>
+        <span class="pm-time">${escapeHtml(fmtTime(m.send_date))}</span>`;
+    d.appendChild(header);
+
+    // 用户消息或系统消息：直接显示
+    if (m.is_user || m.is_system) {
+        const contentEl = document.createElement('div');
+        contentEl.className = 'pm-content';
+        if (truncate && content.length > 150) {
+            contentEl.textContent = content.substring(0, 150) + '…';
+            const expandBtn = document.createElement('span');
+            expandBtn.className = 'pm-expand-btn';
+            expandBtn.textContent = '展开 ▼';
+            expandBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                if (expandBtn.textContent === '展开 ▼') {
+                    contentEl.textContent = content;
+                    contentEl.classList.add('expanded');
+                    expandBtn.textContent = '收起 ▲';
+                } else {
+                    contentEl.textContent = content.substring(0, 150) + '…';
+                    contentEl.classList.remove('expanded');
+                    expandBtn.textContent = '展开 ▼';
+                }
+            });
+            header.appendChild(expandBtn);
+        } else {
+            contentEl.textContent = content;
+            contentEl.classList.add('expanded');
+        }
+        d.appendChild(contentEl);
+        container.appendChild(d);
+        return;
     }
 
-    d.innerHTML = `<div class="pm-header">
-            <span class="pm-index">#${index + 1}</span>
-            <span class="pm-sender">${escapeHtml(m.name || (m.is_user ? 'User' : 'Char'))}</span>
-            <span class="pm-time">${escapeHtml(fmtTime(m.send_date))}</span>
-        </div>
-        <div class="pm-content">${escapeHtml(displayContent)}${needExpand ? '…' : ''}</div>`;
+    // AI 消息：分块渲染
+    const blocks = parseMessageBlocks(content);
 
-    if (truncate && needExpand) {
-        const expandBtn = document.createElement('span');
-        expandBtn.className = 'pm-expand-btn';
-        expandBtn.textContent = '展开 ▼';
-        expandBtn.addEventListener('click', (e) => {
-            e.stopPropagation();
-            const contentEl = d.querySelector('.pm-content');
-            if (expandBtn.textContent === '展开 ▼') {
-                contentEl.textContent = content;
-                contentEl.classList.add('expanded');
-                expandBtn.textContent = '收起 ▲';
-            } else {
-                contentEl.textContent = content.substring(0, 150) + '…';
-                contentEl.classList.remove('expanded');
+    if (blocks.length === 0) {
+        const contentEl = document.createElement('div');
+        contentEl.className = 'pm-content expanded';
+        contentEl.textContent = content || '(空消息)';
+        d.appendChild(contentEl);
+        container.appendChild(d);
+        return;
+    }
+
+    const blocksContainer = document.createElement('div');
+    blocksContainer.className = 'pm-blocks';
+
+    for (const block of blocks) {
+        const isProse = isProseBlock(block);
+        const label = getBlockLabel(block);
+
+        let blockText = block.content;
+        if (block.type === 'xml') {
+            const innerMatch = block.content.match(/^<[^>]+>([\s\S]*)<\/[^>]+>$/);
+            if (innerMatch) blockText = innerMatch[1].trim();
+        }
+
+        if (isProse) {
+            // 正文块：高亮显示
+            const proseEl = document.createElement('div');
+            proseEl.className = 'pm-block pm-block-prose';
+
+            const labelEl = document.createElement('div');
+            labelEl.className = 'pm-block-label prose-label';
+            labelEl.textContent = label;
+            proseEl.appendChild(labelEl);
+
+            const textEl = document.createElement('div');
+            textEl.className = 'pm-block-text';
+            if (truncate && blockText.length > 300) {
+                textEl.textContent = blockText.substring(0, 300) + '…';
+                const expandBtn = document.createElement('span');
+                expandBtn.className = 'pm-expand-btn';
                 expandBtn.textContent = '展开 ▼';
+                expandBtn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    if (expandBtn.textContent === '展开 ▼') {
+                        textEl.textContent = blockText;
+                        expandBtn.textContent = '收起 ▲';
+                    } else {
+                        textEl.textContent = blockText.substring(0, 300) + '…';
+                        expandBtn.textContent = '展开 ▼';
+                    }
+                });
+                labelEl.appendChild(expandBtn);
+            } else {
+                textEl.textContent = blockText;
             }
-        });
-        d.querySelector('.pm-header').appendChild(expandBtn);
+            proseEl.appendChild(textEl);
+            blocksContainer.appendChild(proseEl);
+        } else {
+            // 非正文块：默认折叠
+            const foldEl = document.createElement('div');
+            foldEl.className = 'pm-block pm-block-folded';
+
+            const foldHeader = document.createElement('div');
+            foldHeader.className = 'pm-block-label fold-label';
+            foldHeader.innerHTML = `<span class="fold-arrow">▶</span> ${escapeHtml(label)} <span class="fold-size">(${blockText.length} 字)</span>`;
+            foldHeader.style.cursor = 'pointer';
+
+            const foldBody = document.createElement('div');
+            foldBody.className = 'pm-block-text fold-body';
+            foldBody.textContent = blockText;
+            foldBody.style.display = 'none';
+
+            foldHeader.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const arrow = foldHeader.querySelector('.fold-arrow');
+                if (foldBody.style.display === 'none') {
+                    foldBody.style.display = 'block';
+                    arrow.textContent = '▼';
+                } else {
+                    foldBody.style.display = 'none';
+                    arrow.textContent = '▶';
+                }
+            });
+
+            foldEl.appendChild(foldHeader);
+            foldEl.appendChild(foldBody);
+            blocksContainer.appendChild(foldEl);
+        }
     }
 
+    d.appendChild(blocksContainer);
     container.appendChild(d);
 }
 
@@ -646,8 +872,8 @@ function renderOmission(count, container) {
     el.textContent = `··· 省略 ${count} 条消息 ···`;
     container.appendChild(el);
 }
+
 // 渲染三段式内容到指定容器（预览和全屏共用）
-// anchorPrefix: 传入时给区域标签加 id，用于跳转
 function renderPreviewContent(messages, sectionData, container, truncate, anchorPrefix) {
     container.innerHTML = '';
     const totalMsgs = messages.length;
@@ -694,7 +920,6 @@ function renderPreviewContent(messages, sectionData, container, truncate, anchor
     }
 }
 
-// 收集所有区域标签信息，用于生成导航按钮
 function collectNavLabels(sectionData) {
     let labels = [];
     if (sectionData.mode === 'all') {
@@ -708,7 +933,6 @@ function collectNavLabels(sectionData) {
     }
     return labels;
 }
-
 async function showPreview() {
     const pe = document.getElementById('merger-preview');
     const se = document.getElementById('merger-stats');
@@ -730,13 +954,10 @@ async function showPreview() {
 
         const sectionData = buildPreviewSections(messages, boundaries);
 
-        // 保存预览数据供全屏使用
         lastPreviewData = { messages, boundaries, sectionData, stats };
 
-        // 渲染缩略预览（截断模式，不加锚点）
         renderPreviewContent(messages, sectionData, pe, true, null);
 
-        // 显示全屏按钮
         const fullBtn = document.getElementById('merger-fullscreen-btn');
         if (fullBtn) fullBtn.style.display = 'inline-flex';
 
@@ -760,7 +981,6 @@ function openFullPreview() {
 
     const { messages, sectionData, stats } = lastPreviewData;
 
-    // 统计信息
     if (statsEl) {
         statsEl.innerHTML = `<span>${stats.files} 个文件</span>
             <span>${stats.total} 条总消息</span>
@@ -768,17 +988,14 @@ function openFullPreview() {
             <span>${stats.result} 条最终</span>`;
     }
 
-    // 渲染完整内容（不截断，带锚点）
     renderPreviewContent(messages, sectionData, container, false, 'fp-anchor-');
 
-    // 生成导航按钮
     if (navEl) {
         navEl.innerHTML = '';
         const labels = collectNavLabels(sectionData);
         labels.forEach((item, idx) => {
             const btn = document.createElement('button');
             btn.className = 'nav-jump-btn';
-            // 短标签：开头/拼接处1/拼接处2/结尾
             let shortLabel = item.label;
             if (shortLabel.startsWith('开头')) shortLabel = '🚩 开头';
             else if (shortLabel.startsWith('拼接处')) shortLabel = '✂️ ' + shortLabel.split('：')[0];
